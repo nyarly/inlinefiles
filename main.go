@@ -42,12 +42,15 @@ func main() {
 	sourceDir := parsed[`<source_dir>`].(string)
 	targetPath := parsed[`<output_path>`].(string)
 	png, ok := parsed[`<name>`]
-	if !ok || pn == nil {
-		absTgt := filepath.Abs(targetPath)
-		pn = Base(Dir(absTgt))
+	if !ok || png == nil {
+		absTgt, err := filepath.Abs(targetPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		png = filepath.Base(filepath.Dir(absTgt))
 	}
 	extg, ok := parsed[`<suffix>`]
-	if !ok || ext == nil {
+	if !ok || extg == nil {
 		extg = ".tmpl"
 	}
 	pn := png.(string)
