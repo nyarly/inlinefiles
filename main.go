@@ -9,21 +9,23 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"text/template"
 
 	"github.com/docopt/docopt-go"
 
 	"golang.org/x/tools/imports"
 )
 
-// started from http://stackoverflow.com/questions/17796043/golang-embedding-text-file-into-compiled-executable
+//go:generate inlinefiles --package=main . templates.go
 
 const (
 	docstring = `Inlines files into a Go source file
-Usage: inlinefiles [--package=<name>] [--ext=<suffix>] <source_dir> <output_path>
+Usage: inlinefiles [--vfs=<vfs_name>] [--package=<name>] [--ext=<suffix>] <source_dir> <output_path>
 
 Options:
   --package Force the name of the package, instead of guessing based on output_path
 	--ext Use <suffix> for inlined files instead of ".tmpl"
+	--vfs Put the templates into a mapfs in a variable called <vfs_name>
 	`
 
 	header = `// This file was automatically generated based on the contents of *.tmpl
@@ -33,15 +35,39 @@ Options:
 `
 )
 
+type rootCtx struct {
+	PackageName string
+	Templates   []templateCtx
+	MapFSName   string
+}
+
+type templateCtx struct {
+	Ext          string
+	SourceFile   string
+	SourceReader io.Reader
+}
+
+func (c templateCtx) ConstantName() string {
+	return strings.TrimSuffix(c.SourceFile, c.Ext) + "Tmpl"
+}
+
+func (c templateCtx) Contents() (string, error) {
+	b, e := ioutil.ReadAll(c.SourceReader)
+	return string(b), e
+}
+
 func main() {
 	parsed, err := docopt.Parse(docstring, nil, true, "", false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	var tmpl *template.Template
+	ctx := rootCtx{}
+
 	sourceDir := parsed[`<source_dir>`].(string)
 	targetPath := parsed[`<output_path>`].(string)
-	png, ok := parsed[`<name>`]
+	png, ok := parsed[`--package`]
 	if !ok || png == nil {
 		absTgt, err := filepath.Abs(targetPath)
 		if err != nil {
@@ -49,12 +75,20 @@ func main() {
 		}
 		png = filepath.Base(filepath.Dir(absTgt))
 	}
-	extg, ok := parsed[`<suffix>`]
+	extg, ok := parsed[`--ext`]
 	if !ok || extg == nil {
 		extg = ".tmpl"
 	}
-	pn := png.(string)
+
+	ctx.PackageName = png.(string)
 	ext := extg.(string)
+	mfg, useMapFS := parsed[`--vfs`]
+	if useMapFS && mfg != nil {
+		ctx.MapFSName = mfg.(string)
+		tmpl = template.Must(template.New("root").Parse(useMapFSTmpl))
+	} else {
+		tmpl = template.Must(template.New("root").Parse(useConstantsTmpl))
+	}
 
 	out := &bytes.Buffer{}
 	file, err := os.Create(targetPath)
@@ -67,22 +101,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	out.Write([]byte(header))
-	out.Write([]byte("package " + pn + "\n\nconst (\n"))
 	for _, f := range fs {
 		if strings.HasSuffix(f.Name(), ext) {
-			out.Write([]byte(strings.TrimSuffix(f.Name(), ext) + "Tmpl = \""))
 			f, err := os.Open(f.Name())
 			if err != nil {
 				log.Fatal(err)
 			}
-			r := newEscaper(f)
 
-			io.Copy(out, r)
-			out.Write([]byte("\"\n\n"))
+			ctx.Templates = append(ctx.Templates, templateCtx{
+				Ext:          ext,
+				SourceFile:   f.Name(),
+				SourceReader: newEscaper(f),
+			})
+
 		}
 	}
-	out.Write([]byte(")\n"))
+
+	tmpl.Execute(out, ctx)
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		log.Fatal("Couldn't get current working directory")
@@ -98,8 +134,9 @@ func main() {
 }
 
 type escaper struct {
-	r   io.Reader
-	old []byte
+	r     io.Reader
+	old   []byte
+	debug bool
 }
 
 var doublesRE = regexp.MustCompile(`"`)
@@ -131,11 +168,13 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 		e.old = new[0:0]
 	}
 
-	log.Print(i, "/", n, "\n", len(e.old), ":", string(e.old), "\n", len(p), ":", string(p), "\n\n**************************\n\n")
+	if e.debug {
+		log.Print(i, "/", n, "\n", len(e.old), ":", string(e.old), "\n", len(p), ":", string(p), "\n\n**************************\n\n")
+	}
 
 	return
 }
 
 func newEscaper(r io.Reader) *escaper {
-	return &escaper{r, make([]byte, 0)}
+	return &escaper{r, make([]byte, 0), false}
 }
