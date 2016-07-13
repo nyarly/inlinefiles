@@ -20,12 +20,13 @@ import (
 
 const (
 	docstring = `Inlines files into a Go source file
-Usage: inlinefiles [--vfs=<vfs_name>] [--package=<name>] [--ext=<suffix>] <source_dir> <output_path>
+Usage: inlinefiles [options] <source_dir> <output_path>
 
 Options:
-  --package Force the name of the package, instead of guessing based on output_path
-	--ext Use <suffix> for inlined files instead of ".tmpl"
-	--vfs Put the templates into a mapfs in a variable called <vfs_name>
+  -d --debug        Debug output
+  --package=<name>  Force the name of the package, instead of guessing based on output_path
+	--ext=<suffix>    Use <suffix> for inlined files instead of ".tmpl"
+	--vfs=<name>      Put the templates into a mapfs in a variable called <vfs_name>
 	`
 
 	header = `// This file was automatically generated based on the contents of *.tmpl
@@ -61,6 +62,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	debug := parsed[`--debug`].(bool)
 
 	var tmpl *template.Template
 	ctx := rootCtx{}
@@ -111,7 +114,7 @@ func main() {
 			ctx.Templates = append(ctx.Templates, templateCtx{
 				Ext:          ext,
 				SourceFile:   f.Name(),
-				SourceReader: newEscaper(f),
+				SourceReader: newEscaper(f, debug),
 			})
 
 		}
@@ -139,6 +142,10 @@ type escaper struct {
 	debug bool
 }
 
+func newEscaper(r io.Reader, d bool) *escaper {
+	return &escaper{r, make([]byte, 0), d}
+}
+
 var doublesRE = regexp.MustCompile(`"`)
 var newlsRE = regexp.MustCompile("(?m)\n")
 
@@ -162,19 +169,12 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 			p[n] = 'n'
 		}
 	}
-	if len(p) < i {
-		e.old = new[len(new)-(len(p)-i):]
-	} else {
-		e.old = new[0:0]
-	}
+
+	e.old = new[i:]
 
 	if e.debug {
 		log.Print(i, "/", n, "\n", len(e.old), ":", string(e.old), "\n", len(p), ":", string(p), "\n\n**************************\n\n")
 	}
 
 	return
-}
-
-func newEscaper(r io.Reader) *escaper {
-	return &escaper{r, make([]byte, 0), false}
 }
