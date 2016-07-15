@@ -151,8 +151,6 @@ var doublesRE = regexp.MustCompile(`"`)
 var newlsRE = regexp.MustCompile("(?m)\n")
 
 func (e *escaper) Read(p []byte) (n int, err error) {
-	log.Printf("% #v", e)
-	log.Printf("%d %d", len(p), len(e.old))
 	var new []byte
 	if len(p) > len(e.old) {
 		new = make([]byte, len(p)-len(e.old))
@@ -165,7 +163,6 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 		new = e.old
 	}
 
-	log.Printf("'%s' -> '%s'", new, p)
 	i, n := 0, 0
 	for ; i < len(new) && n < len(p); i, n = i+1, n+1 {
 		switch new[i] {
@@ -184,7 +181,6 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 			new[i] = 'n'
 			i--
 		}
-		log.Printf("'%s' -> '%s'", new, p)
 	}
 
 	e.old = new[i:]
