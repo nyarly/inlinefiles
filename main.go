@@ -137,40 +137,62 @@ func main() {
 }
 
 type escaper struct {
-	r     io.Reader
-	old   []byte
-	debug bool
+	r       io.Reader
+	old     []byte
+	debug   bool
+	already int
 }
 
 func newEscaper(r io.Reader, d bool) *escaper {
-	return &escaper{r, make([]byte, 0), d}
+	return &escaper{r, make([]byte, 0), d, -1}
 }
 
 var doublesRE = regexp.MustCompile(`"`)
 var newlsRE = regexp.MustCompile("(?m)\n")
 
 func (e *escaper) Read(p []byte) (n int, err error) {
-	new := make([]byte, len(p)-len(e.old))
-	c, err := e.r.Read(new)
-	new = append(e.old, new[0:c]...)
+	log.Printf("% #v", e)
+	log.Printf("%d %d", len(p), len(e.old))
+	var new []byte
+	if len(p) > len(e.old) {
+		new = make([]byte, len(p)-len(e.old))
+		c, err := e.r.Read(new)
+		if err != nil {
+			return 0, err
+		}
+		new = append(e.old, new[0:c]...)
+	} else {
+		new = e.old
+	}
 
+	log.Printf("'%s' -> '%s'", new, p)
 	i, n := 0, 0
 	for ; i < len(new) && n < len(p); i, n = i+1, n+1 {
 		switch new[i] {
 		default:
 			p[n] = new[i]
 		case '"', '\\':
-			p[n] = '\\'
-			n++
-			p[n] = new[i]
+			if e.already != i {
+				p[n] = '\\'
+				e.already = i
+				i--
+			} else {
+				p[n] = new[i]
+			}
 		case '\n':
 			p[n] = '\\'
-			n++
-			p[n] = 'n'
+			new[i] = 'n'
+			i--
 		}
+		log.Printf("'%s' -> '%s'", new, p)
 	}
 
 	e.old = new[i:]
+	if e.already == i {
+		e.already = 0
+	} else {
+		e.already = -1
+	}
 
 	if e.debug {
 		log.Print(i, "/", n, "\n", len(e.old), ":", string(e.old), "\n", len(p), ":", string(p), "\n\n**************************\n\n")

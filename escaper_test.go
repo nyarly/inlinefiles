@@ -37,6 +37,31 @@ func TestEscaperReadLength(t *testing.T) {
 	assert.Equal(bs, escd[6:]) //stripping escapables from prefix
 }
 
+func TestBoundaryEscape(t *testing.T) {
+	oneByteAtATime(t, "\n", `\n`)
+	oneByteAtATime(t, "\\", `\\`)
+	oneByteAtATime(t, "\"", `\"`)
+	oneByteAtATime(t, "\n\\\"\\\\\"\n", `\n\\\"\\\\\"\n`)
+}
+
+func oneByteAtATime(t *testing.T, r, ex string) {
+	assert := assert.New(t)
+
+	bs := []byte(r)
+	esc := newEscaper(bytes.NewBuffer(bs), false)
+
+	for i, ch := range []byte(ex) {
+		into := make([]byte, 1)
+		assert.NotPanics(func() {
+			n, err := esc.Read(into)
+			assert.NoError(err)
+			assert.Equal(n, 1)
+			assert.Equal(string(ch), string(into), "index: %d", i)
+		})
+	}
+
+}
+
 func TestEscaperEscapes(t *testing.T) {
 	assert := assert.New(t)
 
