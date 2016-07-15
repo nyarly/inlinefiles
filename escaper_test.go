@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEscaperReadLength(t *testing.T) {
@@ -42,6 +44,18 @@ func TestBoundaryEscape(t *testing.T) {
 	oneByteAtATime(t, "\\", `\\`)
 	oneByteAtATime(t, "\"", `\"`)
 	oneByteAtATime(t, "\n\\\"\\\\\"\n", `\n\\\"\\\\\"\n`)
+}
+
+func TestModelTmpl(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	tf, err := os.Open("testModel.tmpl")
+	require.NoError(err)
+	esc := newEscaper(tf, false)
+	tb, err := ioutil.ReadAll(esc)
+	assert.NoError(err)
+	assert.Equal(`}\n`, string(tb[len(tb)-3:]))
 }
 
 func oneByteAtATime(t *testing.T, r, ex string) {

@@ -25,15 +25,10 @@ Usage: inlinefiles [options] <source_dir> <output_path>
 Options:
   -d --debug        Debug output
   --package=<name>  Force the name of the package, instead of guessing based on output_path
-	--ext=<suffix>    Use <suffix> for inlined files instead of ".tmpl"
+	--ext=<suffix>    Use <suffix> for inlined files. Equivalent to --glob='*<suffix>'
+	--glob=<pattern>  Use <pattern> to restrict files included. Default: '*'
 	--vfs=<name>      Put the templates into a mapfs in a variable called <vfs_name>
 	`
-
-	header = `// This file was automatically generated based on the contents of *.tmpl
-// If you need to update this file, change the contents of those files
-// (or add new ones) and run 'go generate'
-
-`
 )
 
 type rootCtx struct {
@@ -43,13 +38,13 @@ type rootCtx struct {
 }
 
 type templateCtx struct {
-	Ext          string
 	SourceFile   string
 	SourceReader io.Reader
 }
 
 func (c templateCtx) ConstantName() string {
-	return strings.TrimSuffix(c.SourceFile, c.Ext) + "Tmpl"
+	ext := filepath.Ext(c.SourceFile)
+	return strings.TrimSuffix(c.SourceFile, ext) + "Tmpl"
 }
 
 func (c templateCtx) Contents() (string, error) {
@@ -78,13 +73,16 @@ func main() {
 		}
 		png = filepath.Base(filepath.Dir(absTgt))
 	}
-	extg, ok := parsed[`--ext`]
-	if !ok || extg == nil {
-		extg = ".tmpl"
+	ctx.PackageName = png.(string)
+
+	glob := `*`
+	if extg := parsed[`--ext`]; extg != nil {
+		glob = `*` + extg.(string)
+	}
+	if globg := parsed[`--glob`]; globg != nil {
+		glob = globg.(string)
 	}
 
-	ctx.PackageName = png.(string)
-	ext := extg.(string)
 	mfg, useMapFS := parsed[`--vfs`]
 	if useMapFS && mfg != nil {
 		ctx.MapFSName = mfg.(string)
@@ -99,25 +97,38 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fs, err := ioutil.ReadDir(sourceDir)
-	if err != nil {
-		log.Fatal(err)
-	}
+	err = filepath.Walk(sourceDir, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 
-	for _, f := range fs {
-		if strings.HasSuffix(f.Name(), ext) {
+		if f.IsDir() {
+			if f.Name() == "vendor" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		match, err := filepath.Match(glob, f.Name())
+		if err != nil {
+			return err
+		}
+
+		if match {
 			f, err := os.Open(f.Name())
 			if err != nil {
-				log.Fatal(err)
+				return err
 			}
 
 			ctx.Templates = append(ctx.Templates, templateCtx{
-				Ext:          ext,
 				SourceFile:   f.Name(),
 				SourceReader: newEscaper(f, debug),
 			})
-
 		}
+		return nil
+	})
+
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	tmpl.Execute(out, ctx)
@@ -154,9 +165,16 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 	var new []byte
 	if len(p) > len(e.old) {
 		new = make([]byte, len(p)-len(e.old))
-		c, err := e.r.Read(new)
+		var c int
+		c, err = e.r.Read(new)
+
 		if err != nil {
-			return 0, err
+			if e.debug {
+				log.Print(err == io.EOF, err)
+			}
+			if err != io.EOF {
+				return 0, err
+			}
 		}
 		new = append(e.old, new[0:c]...)
 	} else {
@@ -191,8 +209,19 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 	}
 
 	if e.debug {
-		log.Print(i, "/", n, "\n", len(e.old), ":", string(e.old), "\n", len(p), ":", string(p), "\n\n**************************\n\n")
+		log.Print(i, "/", n, " - ", err)
 	}
 
+	if len(e.old) > 0 && err == io.EOF {
+		err = nil
+	}
+
+	if i == 0 && n == 0 {
+		err = io.EOF
+	}
+
+	if e.debug {
+		log.Print(i, "/", n, " - ", err, "\n", len(e.old), ":", string(e.old), "\n", len(p), ":", string(p), "\n\n**************************\n\n")
+	}
 	return
 }
