@@ -114,13 +114,18 @@ func main() {
 		}
 
 		if match {
-			f, err := os.Open(f.Name())
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+
+			sourcePath, err := filepath.Rel(sourceDir, path)
 			if err != nil {
 				return err
 			}
 
 			ctx.Templates = append(ctx.Templates, templateCtx{
-				SourceFile:   f.Name(),
+				SourceFile:   sourcePath,
 				SourceReader: newEscaper(f, debug),
 			})
 		}
