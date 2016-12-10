@@ -1,6 +1,7 @@
 package templatestore
 
 import (
+	"bytes"
 	txttmpl "text/template"
 
 	"golang.org/x/tools/godoc/vfs"
