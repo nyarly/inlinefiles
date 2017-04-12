@@ -23,8 +23,8 @@ const (
 Usage: inlinefiles [options] <source_dir> <output_path>
 
 Options:
-  -d --debug        Debug output
-  --package=<name>  Force the name of the package, instead of guessing based on output_path
+	-d --debug        Debug output
+	--package=<name>  Force the name of the package, instead of guessing based on output_path
 	--ext=<suffix>    Use <suffix> for inlined files. Equivalent to --glob='*<suffix>'
 	--glob=<pattern>  Use <pattern> to restrict files included. Default: '*'
 	--vfs=<name>      Put the templates into a mapfs in a variable called <vfs_name>
