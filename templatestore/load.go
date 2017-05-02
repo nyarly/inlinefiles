@@ -1,3 +1,4 @@
+// Package templatestore provides a convenience for loading inlined templates.
 package templatestore
 
 import (
