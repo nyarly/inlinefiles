@@ -1,3 +1,14 @@
+# DEPRECATED
+
+Since Go 1.16, the embed directive is part of the language,
+and a better approach than outside libraries.
+
+c.f. https://pkg.go.dev/embed@go1.16
+
+If you feel strongly otherwise,
+reach out to take over maintenance here.
+
+
 # Quick intro
 
 A tool for managing chunks of static data in Go programs.
